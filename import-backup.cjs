@@ -36,7 +36,7 @@ function encodeMongoCredentials(uri) {
 }
 
 // const MONGODB_URI = process.env.MONGODB_URI;
-const RAW_MONGODB_URI = "mongodb://localhost:27017"; // Mặc định kết nối đến MongoDB local nếu không có biến môi trường
+const RAW_MONGODB_URI = "mongodb://staging_mongo_admin:adminPassword@127.0.0.1:27019/?authSource=admin"; // Mặc định kết nối đến MongoDB local nếu không có biến môi trường
 const MONGODB_URI = encodeMongoCredentials(RAW_MONGODB_URI);
 
 // Tạo interface để đọc input từ user

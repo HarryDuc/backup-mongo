@@ -22,15 +22,17 @@ dotenv.config();
 function encodeMongoCredentials(uri) {
   try {
     // Parse URI to safely handle credentials
-    const prefix = uri.startsWith('mongodb+srv://') ? 'mongodb+srv://' : 'mongodb://';
+    const prefix = uri.startsWith("mongodb+srv://")
+      ? "mongodb+srv://"
+      : "mongodb://";
     const rest = uri.slice(prefix.length);
-    const atIndex = rest.lastIndexOf('@'); // Use lastIndexOf to find the correct @ separating credentials and host
+    const atIndex = rest.lastIndexOf("@"); // Use lastIndexOf to find the correct @ separating credentials and host
     if (atIndex === -1) return uri;
 
     const credentialsPart = rest.slice(0, atIndex);
     const hostPart = rest.slice(atIndex + 1);
 
-    const colonIndex = credentialsPart.indexOf(':');
+    const colonIndex = credentialsPart.indexOf(":");
     if (colonIndex === -1) return uri;
 
     const username = credentialsPart.slice(0, colonIndex);
@@ -41,7 +43,7 @@ function encodeMongoCredentials(uri) {
 
     return `${prefix}${encodedUsername}:${encodedPassword}@${hostPart}`;
   } catch (error) {
-    console.warn('Warning: Could not encode MongoDB URI credentials', error);
+    console.warn("Warning: Could not encode MongoDB URI credentials", error);
     return uri;
   }
 }
@@ -60,10 +62,9 @@ const TELEGRAM_API_URL = TELEGRAM_BOT_TOKEN
 // Cấu hình đường dẫn uploads (từ .env)
 const UPLOAD_PATHS_ENV = process.env.UPLOAD_PATHS
   ? process.env.UPLOAD_PATHS.split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
+      .map((s) => s.trim())
+      .filter(Boolean)
   : [];
-
 
 // Cấu hình tối ưu
 const BATCH_SIZE = 1000; // Số documents xử lý mỗi batch
@@ -110,7 +111,11 @@ async function zipBackupDirectory(backupDir, dateStr) {
 
     output.on("close", () => {
       const sizeMB = (archive.pointer() / 1024 / 1024).toFixed(2);
-      console.log(chalk.green(`✅ Đã nén backup thành công: ${zipFileName} (${sizeMB} MB)`));
+      console.log(
+        chalk.green(
+          `✅ Đã nén backup thành công: ${zipFileName} (${sizeMB} MB)`,
+        ),
+      );
       resolve(zipFilePath);
     });
 
@@ -134,14 +139,14 @@ async function backupCollection(
   collectionName,
   backupDir,
   databaseName,
-  progressBar
+  progressBar,
 ) {
   const collection = db.collection(collectionName);
   const fileExtension = USE_EXTENDED_JSON ? ".json" : ".json";
   const backupFile = path.join(
     backupDir,
     databaseName,
-    `${collectionName}${fileExtension}`
+    `${collectionName}${fileExtension}`,
   );
 
   try {
@@ -193,8 +198,8 @@ async function backupCollection(
   } catch (error) {
     console.log(
       chalk.red(
-        `  ❌ Lỗi backup collection ${databaseName}.${collectionName}: ${error.message}`
-      )
+        `  ❌ Lỗi backup collection ${databaseName}.${collectionName}: ${error.message}`,
+      ),
     );
     progressBar.increment();
     return 0;
@@ -206,7 +211,7 @@ async function backupDatabase(
   client,
   databaseName,
   backupDir,
-  databaseProgressBar
+  databaseProgressBar,
 ) {
   const db = client.db(databaseName);
 
@@ -247,7 +252,7 @@ async function backupDatabase(
         collectionName,
         backupDir,
         databaseName,
-        collectionProgressBar
+        collectionProgressBar,
       );
       return count;
     });
@@ -332,7 +337,8 @@ async function parseArguments() {
         {
           type: "input",
           name: "manualPaths",
-          message: "Nhập đường dẫn thư mục chứa uploads (phân tách bằng dấu phẩy):",
+          message:
+            "Nhập đường dẫn thư mục chứa uploads (phân tách bằng dấu phẩy):",
           default: UPLOAD_PATHS_ENV.join(", "),
         },
       ]);
@@ -354,7 +360,9 @@ async function parseArguments() {
 // Hàm gửi tin nhắn lên Telegram
 async function sendTelegramMessage(message) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.log(chalk.yellow("⚠️  Telegram không được cấu hình, bỏ qua gửi tin nhắn"));
+    console.log(
+      chalk.yellow("⚠️  Telegram không được cấu hình, bỏ qua gửi tin nhắn"),
+    );
     return false;
   }
 
@@ -374,7 +382,9 @@ async function sendTelegramMessage(message) {
 // Hàm gửi file lên Telegram
 async function sendTelegramFile(filePath, caption = "") {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.log(chalk.yellow("⚠️  Telegram không được cấu hình, bỏ qua gửi file"));
+    console.log(
+      chalk.yellow("⚠️  Telegram không được cấu hình, bỏ qua gửi file"),
+    );
     return false;
   }
 
@@ -385,8 +395,8 @@ async function sendTelegramFile(filePath, caption = "") {
     if (fileStats.size > maxFileSize) {
       console.log(
         chalk.yellow(
-          `⚠️  File ${path.basename(filePath)} quá lớn (${(fileStats.size / 1024 / 1024).toFixed(2)}MB), bỏ qua gửi lên Telegram`
-        )
+          `⚠️  File ${path.basename(filePath)} quá lớn (${(fileStats.size / 1024 / 1024).toFixed(2)}MB), bỏ qua gửi lên Telegram`,
+        ),
       );
       return false;
     }
@@ -405,13 +415,15 @@ async function sendTelegramFile(filePath, caption = "") {
         headers: form.getHeaders(),
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
-      }
+      },
     );
 
     return response.data.ok;
   } catch (error) {
     console.log(
-      chalk.red(`❌ Lỗi gửi file Telegram ${path.basename(filePath)}: ${error.message}`)
+      chalk.red(
+        `❌ Lỗi gửi file Telegram ${path.basename(filePath)}: ${error.message}`,
+      ),
     );
     return false;
   }
@@ -437,7 +449,8 @@ async function backupUploadsDirectory(sourcePath, backupDir) {
       projectName = `${pathParts[pathParts.length - 2]}_${pathParts[pathParts.length - 1]}`;
     } else {
       // Nếu chỉ có 1 phần, dùng tên đó
-      projectName = pathParts[pathParts.length - 1] || path.basename(sourcePath);
+      projectName =
+        pathParts[pathParts.length - 1] || path.basename(sourcePath);
     }
 
     // Loại bỏ ký tự đặc biệt không hợp lệ cho tên thư mục
@@ -451,13 +464,19 @@ async function backupUploadsDirectory(sourcePath, backupDir) {
     // Copy thư mục uploads
     await copyDirectory(uploadsPath, destPath);
 
-    console.log(chalk.green(`✅ Đã backup uploads từ: ${sourcePath} -> ${projectName}`));
+    console.log(
+      chalk.green(`✅ Đã backup uploads từ: ${sourcePath} -> ${projectName}`),
+    );
     return destPath;
   } catch (error) {
     if (error.code === "ENOENT") {
-      console.log(chalk.yellow(`⚠️  Không tìm thấy thư mục uploads tại: ${uploadsPath}`));
+      console.log(
+        chalk.yellow(`⚠️  Không tìm thấy thư mục uploads tại: ${uploadsPath}`),
+      );
     } else {
-      console.log(chalk.red(`❌ Lỗi backup uploads từ ${sourcePath}: ${error.message}`));
+      console.log(
+        chalk.red(`❌ Lỗi backup uploads từ ${sourcePath}: ${error.message}`),
+      );
     }
     return null;
   }
@@ -482,8 +501,8 @@ async function copyDirectory(src, dest) {
       // Bỏ qua file không thể copy (có thể do quyền truy cập hoặc file đang được sử dụng)
       console.log(
         chalk.yellow(
-          `  ⚠️  Bỏ qua file: ${path.relative(src, srcPath)} - ${error.message}`
-        )
+          `  ⚠️  Bỏ qua file: ${path.relative(src, srcPath)} - ${error.message}`,
+        ),
       );
     }
   }
@@ -512,32 +531,37 @@ async function main() {
   const startTime = Date.now();
   console.log(
     chalk.bold.blue(
-      "💾 Bắt đầu backup toàn bộ MongoDB cluster (Giữ nguyên kiểu dữ liệu)"
-    )
+      "💾 Bắt đầu backup toàn bộ MongoDB cluster (Giữ nguyên kiểu dữ liệu)",
+    ),
   );
   console.log(chalk.gray(`MONGODB_URI: ${MONGODB_URI}`));
   console.log(chalk.gray(`Batch size: ${BATCH_SIZE} documents`));
   console.log(
-    chalk.gray(`Max concurrent collections: ${MAX_CONCURRENT_COLLECTIONS}`)
+    chalk.gray(`Max concurrent collections: ${MAX_CONCURRENT_COLLECTIONS}`),
   );
   console.log(
-    chalk.gray(`Max concurrent databases: ${MAX_CONCURRENT_DATABASES}`)
-  );
-  console.log(
-    chalk.yellow(
-      `📋 Backup format: ${USE_EXTENDED_JSON ? "Extended JSON (.ejson)" : "Standard JSON (.json)"
-      }`
-    )
+    chalk.gray(`Max concurrent databases: ${MAX_CONCURRENT_DATABASES}`),
   );
   console.log(
     chalk.yellow(
-      `🔧 Giữ nguyên kiểu dữ liệu MongoDB: ${USE_EXTENDED_JSON ? "CÓ ✅" : "KHÔNG ❌"
-      }`
-    )
+      `📋 Backup format: ${
+        USE_EXTENDED_JSON ? "Extended JSON (.ejson)" : "Standard JSON (.json)"
+      }`,
+    ),
+  );
+  console.log(
+    chalk.yellow(
+      `🔧 Giữ nguyên kiểu dữ liệu MongoDB: ${
+        USE_EXTENDED_JSON ? "CÓ ✅" : "KHÔNG ❌"
+      }`,
+    ),
   );
 
-  const { databases: userDatabases, uploadPaths, uploadPathsSource } =
-    await parseArguments();
+  const {
+    databases: userDatabases,
+    uploadPaths,
+    uploadPathsSource,
+  } = await parseArguments();
 
   const client = new MongoClient(MONGODB_URI, {
     maxPoolSize: 50,
@@ -561,13 +585,13 @@ async function main() {
     if (userDatabases && userDatabases.length > 0) {
       // Chỉ backup các database do người dùng chỉ định
       databaseNames = databaseNames.filter((name) =>
-        userDatabases.includes(name)
+        userDatabases.includes(name),
       );
       if (databaseNames.length === 0) {
         console.log(
           chalk.red(
-            "❌ Không tìm thấy database nào phù hợp với lựa chọn của bạn!"
-          )
+            "❌ Không tìm thấy database nào phù hợp với lựa chọn của bạn!",
+          ),
         );
         await client.close();
         return;
@@ -575,14 +599,14 @@ async function main() {
       console.log(
         chalk.cyan(
           `📋 Chỉ backup các database do người dùng chọn: ${databaseNames.join(
-            ", "
-          )}`
-        )
+            ", ",
+          )}`,
+        ),
       );
     }
 
     console.log(
-      chalk.cyan(`📋 Tìm thấy ${databaseNames.length} databases để backup:`)
+      chalk.cyan(`📋 Tìm thấy ${databaseNames.length} databases để backup:`),
     );
     databaseNames.forEach((name) => console.log(chalk.gray(`  - ${name}`)));
 
@@ -613,7 +637,7 @@ async function main() {
 
     await fs.writeFile(
       path.join(backupDir, "metadata.json"),
-      JSON.stringify(metadata, null, 2)
+      JSON.stringify(metadata, null, 2),
     );
 
     // Thêm ghi file MONGO_URL.txt với thông tin chi tiết
@@ -634,10 +658,11 @@ ${databaseNames.map((name) => `  - ${name}`).join("\n")}
 Format: ${USE_EXTENDED_JSON ? "Extended JSON (EJSON)" : "Standard JSON"}
 File extension: ${USE_EXTENDED_JSON ? ".ejson" : ".json"}
 Giữ nguyên kiểu dữ liệu MongoDB: ${USE_EXTENDED_JSON ? "CÓ" : "KHÔNG"}
-${USE_EXTENDED_JSON
-        ? "ObjectId, Date, Binary và các kiểu dữ liệu đặc biệt được bảo tồn"
-        : "Các kiểu dữ liệu đặc biệt có thể bị chuyển thành string"
-      }
+${
+  USE_EXTENDED_JSON
+    ? "ObjectId, Date, Binary và các kiểu dữ liệu đặc biệt được bảo tồn"
+    : "Các kiểu dữ liệu đặc biệt có thể bị chuyển thành string"
+}
 
 === CÀI ĐẶT HIỆU SUẤT ===
 Batch size: ${BATCH_SIZE} documents
@@ -654,10 +679,11 @@ Thời gian tạo backup: ${new Date().toISOString()}
 Backup bao gồm tất cả databases (trừ system databases: admin, local, config).
 Mỗi database sẽ được lưu trong thư mục riêng với tất cả collections.
 Sử dụng parallel processing để tăng tốc độ backup.
-${USE_EXTENDED_JSON
-        ? "Sử dụng Extended JSON để GIỮ NGUYÊN tất cả kiểu dữ liệu MongoDB!"
-        : "Sử dụng JSON thông thường (có thể mất kiểu dữ liệu)."
-      }
+${
+  USE_EXTENDED_JSON
+    ? "Sử dụng Extended JSON để GIỮ NGUYÊN tất cả kiểu dữ liệu MongoDB!"
+    : "Sử dụng JSON thông thường (có thể mất kiểu dữ liệu)."
+}
 
 === CẤU TRÚC BACKUP ===
 backups/
@@ -674,26 +700,29 @@ backups/
 
 === LƯU Ý QUAN TRỌNG ===
 - Backup này có thể được restore bằng script import-backup.js
-- Dữ liệu được lưu dưới dạng ${USE_EXTENDED_JSON ? "Extended JSON (.ejson)" : "Standard JSON (.json)"
-      }
-- ${USE_EXTENDED_JSON
+- Dữ liệu được lưu dưới dạng ${
+      USE_EXTENDED_JSON ? "Extended JSON (.ejson)" : "Standard JSON (.json)"
+    }
+- ${
+      USE_EXTENDED_JSON
         ? "TẤT CẢ kiểu dữ liệu MongoDB được bảo tồn (ObjectId, Date, Binary, etc.)"
         : "Các kiểu dữ liệu đặc biệt có thể bị mất"
-      }
+    }
 - System databases (admin, local, config) không được backup
 - Sử dụng parallel processing để tối ưu hiệu suất
 - Thời gian backup: ${nowStr}
 
 === VÍ DỤ KIỂU DỮ LIỆU ĐƯỢC BẢO TỒN ===
-${USE_EXTENDED_JSON
-        ? `
+${
+  USE_EXTENDED_JSON
+    ? `
 ObjectId: {"$oid": "507f1f77bcf86cd799439011"}
 Date: {"$date": "2023-01-01T00:00:00.000Z"}
 Binary: {"$binary": {"base64": "...", "subType": "00"}}
 Decimal128: {"$numberDecimal": "123.45"}
 `
-        : "Không áp dụng - sử dụng JSON thông thường"
-      }`;
+    : "Không áp dụng - sử dụng JSON thông thường"
+}`;
 
     await fs.writeFile(path.join(backupDir, "MONGO_URL.txt"), mongoUrlContent);
 
@@ -722,7 +751,7 @@ Decimal128: {"$numberDecimal": "123.45"}
           client,
           databaseName,
           backupDir,
-          databaseProgressBar
+          databaseProgressBar,
         );
 
         // Đếm số collections trong database này
@@ -745,7 +774,7 @@ Decimal128: {"$numberDecimal": "123.45"}
     const duration = ((endTime - startTime) / 1000).toFixed(2);
 
     console.log(
-      chalk.bold.green(`\n🎉 Backup hoàn thành trong ${duration} giây!`)
+      chalk.bold.green(`\n🎉 Backup hoàn thành trong ${duration} giây!`),
     );
     console.log(chalk.green(`📊 Tổng cộng:`));
     console.log(chalk.green(`  - ${databaseNames.length} databases`));
@@ -753,7 +782,7 @@ Decimal128: {"$numberDecimal": "123.45"}
     console.log(chalk.green(`  - ${totalBackedUp} documents`));
     console.log(chalk.gray(`📁 Thư mục backup: ${backupDir}`));
     console.log(
-      chalk.yellow("\n⚠️  Bây giờ bạn có thể chạy script cập nhật an toàn!")
+      chalk.yellow("\n⚠️  Bây giờ bạn có thể chạy script cập nhật an toàn!"),
     );
 
     // Backup thư mục uploads nếu có đường dẫn được chỉ định
@@ -761,8 +790,8 @@ Decimal128: {"$numberDecimal": "123.45"}
       console.log(chalk.cyan("\n📁 Bắt đầu backup thư mục uploads..."));
       console.log(
         chalk.gray(
-          `   Sử dụng ${uploadPaths.length} đường dẫn từ ${uploadPathsSource}`
-        )
+          `   Sử dụng ${uploadPaths.length} đường dẫn từ ${uploadPathsSource}`,
+        ),
       );
 
       for (const uploadPath of uploadPaths) {
@@ -799,7 +828,7 @@ ${uploadPaths && uploadPaths.length > 0 ? `\n📂 <b>Thư mục uploads đã bac
 
       await sendTelegramMessage(summaryMessage);
 
-      // Nén toàn bộ thư mục backup thành file zip
+      // Nén toàn bộ thư mục backup thành file zip (file TẠM chỉ để gửi Telegram)
       console.log(chalk.cyan("\n📦 Đang nén toàn bộ backup thành file zip..."));
       let zipFilePath;
       try {
@@ -813,42 +842,77 @@ ${uploadPaths && uploadPaths.length > 0 ? `\n📂 <b>Thư mục uploads đã bac
         if (zipStats.size > maxFileSize) {
           console.log(
             chalk.yellow(
-              `⚠️  File zip quá lớn (${zipSizeMB}MB), vượt quá giới hạn 50MB của Telegram. Không thể gửi lên Telegram.`
-            )
+              `⚠️  File zip quá lớn (${zipSizeMB}MB), vượt quá giới hạn 50MB của Telegram. Không thể gửi lên Telegram.`,
+            ),
           );
-          console.log(chalk.gray(`   File zip đã được lưu tại: ${zipFilePath}`));
+          console.log(
+            chalk.gray(
+              `   Bản backup đầy đủ vẫn nằm trong thư mục: ${backupDir}`,
+            ),
+          );
         } else {
           // Gửi file zip lên Telegram
-          console.log(chalk.cyan(`📤 Đang gửi file backup lên Telegram (${zipSizeMB}MB)...`));
-          const zipFileName = `backup-${dateStr}.zip`;
-          const caption = `📦 <b>BACKUP HOÀN THÀNH</b>\n\n📊 <b>Thống kê:</b>\n• Databases: ${databaseNames.length}\n• Collections: ${totalCollections}\n• Documents: ${totalBackedUp}\n• Kích thước: ${zipSizeMB} MB\n• Thời gian backup: ${duration} giây\n\n⏰ ${new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}`;
+          console.log(
+            chalk.cyan(
+              `📤 Đang gửi file backup lên Telegram (${zipSizeMB}MB)...`,
+            ),
+          );
+          const caption = `📦 BACKUP HOÀN THÀNH\n\n📊 Thống kê:\n• Databases: ${databaseNames.length}\n• Collections: ${totalCollections}\n• Documents: ${totalBackedUp}\n• Kích thước: ${zipSizeMB} MB\n• Thời gian backup: ${duration} giây\n\n⏰ ${new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}`;
 
           const success = await sendTelegramFile(zipFilePath, caption);
 
           if (success) {
-            console.log(chalk.green("✅ Đã gửi file backup lên Telegram thành công"));
-
-            // Xóa file zip sau khi gửi thành công để tiết kiệm dung lượng
-            try {
-              await fs.unlink(zipFilePath);
-              console.log(chalk.gray(`🗑️  Đã xóa file zip tạm: ${zipFileName}`));
-            } catch (deleteError) {
-              console.log(chalk.yellow(`⚠️  Không thể xóa file zip: ${deleteError.message}`));
-            }
+            console.log(
+              chalk.green("✅ Đã gửi file backup lên Telegram thành công"),
+            );
           } else {
-            console.log(chalk.yellow("⚠️  Không thể gửi file zip lên Telegram"));
-            console.log(chalk.gray(`   File zip đã được lưu tại: ${zipFilePath}`));
+            console.log(
+              chalk.yellow("⚠️  Không thể gửi file zip lên Telegram"),
+            );
+            console.log(
+              chalk.gray(
+                `   Bản backup đầy đủ vẫn nằm trong thư mục: ${backupDir}`,
+              ),
+            );
           }
         }
       } catch (error) {
         console.log(chalk.red(`❌ Lỗi nén hoặc gửi backup: ${error.message}`));
+        console.log(
+          chalk.gray(
+            `   Bản backup đầy đủ vẫn nằm trong thư mục: ${backupDir}`,
+          ),
+        );
+      } finally {
+        // Xóa file zip tạm để không lưu trùng dữ liệu với thư mục backup
         if (zipFilePath && fsSync.existsSync(zipFilePath)) {
-          console.log(chalk.gray(`   File zip đã được lưu tại: ${zipFilePath}`));
+          try {
+            await fs.unlink(zipFilePath);
+            console.log(
+              chalk.gray(
+                `🗑️  Đã xóa file zip tạm: ${path.basename(zipFilePath)}`,
+              ),
+            );
+          } catch (deleteError) {
+            console.log(
+              chalk.yellow(
+                `⚠️  Không thể xóa file zip: ${deleteError.message}`,
+              ),
+            );
+          }
         }
       }
     } else {
-      console.log(chalk.yellow("⚠️  Telegram không được cấu hình, bỏ qua gửi lên Telegram"));
-      console.log(chalk.gray("   Để sử dụng, thêm TELEGRAM_BOT_TOKEN và TELEGRAM_CHAT_ID vào file .env"));
+      console.log(
+        chalk.yellow(
+          "⚠️  Telegram không được cấu hình, bỏ qua gửi lên Telegram",
+        ),
+      );
+      console.log(
+        chalk.gray(
+          "   Để sử dụng, thêm TELEGRAM_BOT_TOKEN và TELEGRAM_CHAT_ID vào file .env",
+        ),
+      );
     }
   } catch (error) {
     console.log(chalk.red(`❌ Lỗi backup: ${error.message}`));
@@ -856,7 +920,7 @@ ${uploadPaths && uploadPaths.length > 0 ? `\n📂 <b>Thư mục uploads đã bac
     // Gửi thông báo lỗi lên Telegram nếu có
     if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
       await sendTelegramMessage(
-        `❌ <b>LỖI BACKUP</b>\n\n${error.message}\n\n⏰ ${new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}`
+        `❌ <b>LỖI BACKUP</b>\n\n${error.message}\n\n⏰ ${new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}`,
       );
     }
   } finally {

@@ -8,6 +8,7 @@ const __dirname = path.dirname(__filename);
 
 // backup.cjs cùng thư mục
 const backupScript = path.resolve(__dirname, 'backup.cjs');
+const backupTelegramScript = path.resolve(__dirname, 'backup-telegram.cjs');
 
 let isRunning = false;
 
