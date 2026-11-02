@@ -1,12 +1,42 @@
-﻿const { MongoClient, BSON } = require("mongodb");
+﻿require("dotenv").config();
+const { MongoClient, BSON } = require("mongodb");
 const { EJSON } = BSON;
 const fs = require("fs").promises;
 const path = require("path");
 const chalk = require("chalk");
 const cliProgress = require("cli-progress");
 
+// Hàm encode URI components an toàn
+function encodeMongoCredentials(uri) {
+  try {
+    // Parse URI to safely handle credentials
+    const prefix = uri.startsWith('mongodb+srv://') ? 'mongodb+srv://' : 'mongodb://';
+    const rest = uri.slice(prefix.length);
+    const atIndex = rest.lastIndexOf('@'); // Use lastIndexOf to find the correct @ separating credentials and host
+    if (atIndex === -1) return uri;
+
+    const credentialsPart = rest.slice(0, atIndex);
+    const hostPart = rest.slice(atIndex + 1);
+
+    const colonIndex = credentialsPart.indexOf(':');
+    if (colonIndex === -1) return uri;
+
+    const username = credentialsPart.slice(0, colonIndex);
+    const password = credentialsPart.slice(colonIndex + 1);
+
+    const encodedUsername = encodeURIComponent(username);
+    const encodedPassword = encodeURIComponent(password);
+
+    return `${prefix}${encodedUsername}:${encodedPassword}@${hostPart}`;
+  } catch (error) {
+    console.warn('Warning: Could not encode MongoDB URI credentials', error);
+    return uri;
+  }
+}
+
 // Cấu hình kết nối MongoDB Atlas
-const MONGODB_URI = process.env.MONGODB_URI;
+const RAW_MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017";
+const MONGODB_URI = encodeMongoCredentials(RAW_MONGODB_URI);
 
 
 // Cấu hình tối ưu

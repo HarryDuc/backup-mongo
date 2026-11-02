@@ -4,8 +4,40 @@ const fs = require("fs").promises;
 const path = require("path");
 const chalk = require("chalk");
 const readline = require("readline");
+const dotenv = require("dotenv");
+dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI;
+// Hàm encode URI components an toàn
+function encodeMongoCredentials(uri) {
+  try {
+    // Parse URI to safely handle credentials
+    const prefix = uri.startsWith('mongodb+srv://') ? 'mongodb+srv://' : 'mongodb://';
+    const rest = uri.slice(prefix.length);
+    const atIndex = rest.lastIndexOf('@'); // Use lastIndexOf to find the correct @ separating credentials and host
+    if (atIndex === -1) return uri;
+
+    const credentialsPart = rest.slice(0, atIndex);
+    const hostPart = rest.slice(atIndex + 1);
+
+    const colonIndex = credentialsPart.indexOf(':');
+    if (colonIndex === -1) return uri;
+
+    const username = credentialsPart.slice(0, colonIndex);
+    const password = credentialsPart.slice(colonIndex + 1);
+
+    const encodedUsername = encodeURIComponent(username);
+    const encodedPassword = encodeURIComponent(password);
+
+    return `${prefix}${encodedUsername}:${encodedPassword}@${hostPart}`;
+  } catch (error) {
+    console.warn('Warning: Could not encode MongoDB URI credentials', error);
+    return uri;
+  }
+}
+
+// const MONGODB_URI = process.env.MONGODB_URI;
+const RAW_MONGODB_URI = "mongodb://localhost:27017"; // Mặc định kết nối đến MongoDB local nếu không có biến môi trường
+const MONGODB_URI = encodeMongoCredentials(RAW_MONGODB_URI);
 
 // Tạo interface để đọc input từ user
 const rl = readline.createInterface({
@@ -135,11 +167,13 @@ function showUsage() {
   );
   console.log(
     chalk.gray(
-      "  node scripts/dbtools/import-backup.js ./backups/28-04-2026_10-08-38 --database decorandmore --target decorandmore-new --uri mongodb+srv://user:pass@new-cluster.mongodb.net/"
+      "node import-backup.js ./backups/28-04-2026_10-08-38 --database decorandmore --target decorandmore-new --uri mongodb+srv://user:pass@new-cluster.mongodb.net/"
     )
   );
   console.log("");
 }
+
+const DATABASE_NAME = "dtrpoint"
 
 // Hàm parse arguments từ command line
 function parseArguments() {
@@ -148,7 +182,7 @@ function parseArguments() {
     backupDir: null,
     databases: [],
     collections: [],
-    // targetDatabase: DATABASE_NAME,
+    targetDatabase: DATABASE_NAME,
     targetUri: MONGODB_URI,
     importAll: false,
     showHelp: false,
@@ -200,7 +234,7 @@ function parseArguments() {
         break;
       case "--uri":
         if (i + 1 < args.length) {
-          options.targetUri = args[i + 1];
+          options.targetUri = encodeMongoCredentials(args[i + 1]);
           i++;
         }
         break;

@@ -1,4 +1,4 @@
-﻿const { MongoClient, BSON } = require("mongodb");
+const { MongoClient, BSON } = require("mongodb");
 const { EJSON } = BSON;
 const fs = require("fs").promises;
 const fsSync = require("fs");
@@ -10,10 +10,45 @@ const axios = require("axios");
 const FormData = require("form-data");
 const { createReadStream, statSync } = require("fs");
 const archiver = require("archiver");
+// inquirer v12 (ESM) expose prompt qua default export khi require()
+const inquirerModule = require("inquirer");
+const inquirerPrompt =
+  typeof inquirerModule.prompt === "function"
+    ? inquirerModule.prompt
+    : inquirerModule.default.prompt;
 dotenv.config();
 
+// Hàm encode URI components an toàn
+function encodeMongoCredentials(uri) {
+  try {
+    // Parse URI to safely handle credentials
+    const prefix = uri.startsWith('mongodb+srv://') ? 'mongodb+srv://' : 'mongodb://';
+    const rest = uri.slice(prefix.length);
+    const atIndex = rest.lastIndexOf('@'); // Use lastIndexOf to find the correct @ separating credentials and host
+    if (atIndex === -1) return uri;
+
+    const credentialsPart = rest.slice(0, atIndex);
+    const hostPart = rest.slice(atIndex + 1);
+
+    const colonIndex = credentialsPart.indexOf(':');
+    if (colonIndex === -1) return uri;
+
+    const username = credentialsPart.slice(0, colonIndex);
+    const password = credentialsPart.slice(colonIndex + 1);
+
+    const encodedUsername = encodeURIComponent(username);
+    const encodedPassword = encodeURIComponent(password);
+
+    return `${prefix}${encodedUsername}:${encodedPassword}@${hostPart}`;
+  } catch (error) {
+    console.warn('Warning: Could not encode MongoDB URI credentials', error);
+    return uri;
+  }
+}
+
 // Cấu hình kết nối MongoDB Atlas
-const MONGODB_URI = process.env.MONGODB_URI;
+const RAW_MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URI = encodeMongoCredentials(RAW_MONGODB_URI);
 
 // Cấu hình Telegram
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -227,7 +262,7 @@ async function backupDatabase(
 }
 
 // Thêm hàm parseArguments để lấy danh sách database và đường dẫn từ dòng lệnh hoặc .env
-function parseArguments() {
+async function parseArguments() {
   const args = process.argv.slice(2);
   const dbArgIndex = args.findIndex((arg) => arg === "--database");
   const pathArgIndex = args.findIndex((arg) => arg === "--paths");
@@ -242,18 +277,78 @@ function parseArguments() {
 
   // Ưu tiên đọc từ command line, nếu không có thì dùng từ .env
   let uploadPaths = [];
-  if (pathArgIndex !== -1 && args[pathArgIndex + 1]) {
+  let uploadPathsSource = "none";
+
+  const skipUploads =
+    args.includes("--no-uploads") || args.includes("--skip-uploads");
+
+  if (skipUploads) {
+    // Người dùng chủ động không backup uploads
+    uploadPaths = [];
+    uploadPathsSource = "disabled (--no-uploads)";
+  } else if (pathArgIndex !== -1 && args[pathArgIndex + 1]) {
     // Đọc từ command line
     uploadPaths = args[pathArgIndex + 1]
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
+    uploadPathsSource = "command line";
+  } else if (process.stdin.isTTY && process.stdout.isTTY) {
+    // Chế độ interactive: hỏi người dùng có backup uploads hay không
+    const choices = [];
+    if (UPLOAD_PATHS_ENV.length > 0) {
+      choices.push({
+        name: `Có — dùng UPLOAD_PATHS trong .env (${UPLOAD_PATHS_ENV.join(", ")})`,
+        value: "env",
+      });
+    }
+    choices.push({
+      name: "Có — nhập đường dẫn thủ công (phân tách bằng dấu phẩy)",
+      value: "manual",
+    });
+    choices.push({
+      name: "Không — bỏ qua backup thư mục uploads",
+      value: "skip",
+    });
+
+    const { uploadChoice } = await inquirerPrompt([
+      {
+        type: "list",
+        name: "uploadChoice",
+        message: "📂 Bạn có muốn backup thư mục uploads không?",
+        choices,
+        default: 0,
+      },
+    ]);
+
+    if (uploadChoice === "skip") {
+      uploadPaths = [];
+      uploadPathsSource = "skipped (interactive)";
+    } else if (uploadChoice === "env") {
+      uploadPaths = UPLOAD_PATHS_ENV;
+      uploadPathsSource = ".env file";
+    } else {
+      const { manualPaths } = await inquirerPrompt([
+        {
+          type: "input",
+          name: "manualPaths",
+          message: "Nhập đường dẫn thư mục chứa uploads (phân tách bằng dấu phẩy):",
+          default: UPLOAD_PATHS_ENV.join(", "),
+        },
+      ]);
+      uploadPaths = (manualPaths || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      uploadPathsSource = "interactive";
+    }
   } else if (UPLOAD_PATHS_ENV.length > 0) {
     // Đọc từ .env
     uploadPaths = UPLOAD_PATHS_ENV;
+    uploadPathsSource = ".env file";
   }
 
-  return { databases, uploadPaths };
+  return { databases, uploadPaths, uploadPathsSource };
 }
 
 // Hàm gửi tin nhắn lên Telegram
@@ -441,7 +536,8 @@ async function main() {
     )
   );
 
-  const { databases: userDatabases, uploadPaths } = parseArguments();
+  const { databases: userDatabases, uploadPaths, uploadPathsSource } =
+    await parseArguments();
 
   const client = new MongoClient(MONGODB_URI, {
     maxPoolSize: 50,
@@ -663,7 +759,11 @@ Decimal128: {"$numberDecimal": "123.45"}
     // Backup thư mục uploads nếu có đường dẫn được chỉ định
     if (uploadPaths && uploadPaths.length > 0) {
       console.log(chalk.cyan("\n📁 Bắt đầu backup thư mục uploads..."));
-      console.log(chalk.gray(`   Sử dụng ${uploadPaths.length} đường dẫn từ ${process.argv.includes("--paths") ? "command line" : ".env file"}`));
+      console.log(
+        chalk.gray(
+          `   Sử dụng ${uploadPaths.length} đường dẫn từ ${uploadPathsSource}`
+        )
+      );
 
       for (const uploadPath of uploadPaths) {
         const normalizedPath = uploadPath.replace(/\\/g, "/");
