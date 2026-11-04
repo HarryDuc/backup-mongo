@@ -70,6 +70,6 @@ function runBackupTelegram() {
 // cron.schedule('15 */12 * * *', runBackupDrive);
 // runBackupDrive();
 
-// Backup Telegram: 00:30 và 12:30
-cron.schedule('30 */12 * * *', runBackupTelegram);
+// Chạy mỗi 6 giờ
+cron.schedule('0 */6 * * *', runBackupTelegram);
 runBackupTelegram(); //Chạy ngay lần đầu

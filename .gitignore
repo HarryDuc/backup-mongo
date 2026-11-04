@@ -5,3 +5,7 @@ package-lock.json
 service-account.json
 *service-account*.json
 *.key.pem
+
+.env.prod
+deploy.sh
+ssh-deploy.sh
