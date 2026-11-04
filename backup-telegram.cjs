@@ -9,7 +9,10 @@ const dotenv = require("dotenv");
 const axios = require("axios");
 const FormData = require("form-data");
 const { createReadStream, statSync } = require("fs");
-const archiver = require("archiver");
+const {
+  encryptDirectory,
+  getEncryptionKey,
+} = require("./backup-encryption.cjs");
 // inquirer v12 (ESM) expose prompt qua default export khi require()
 const inquirerModule = require("inquirer");
 const inquirerPrompt =
@@ -99,38 +102,49 @@ async function createBackupDirectory() {
   }
 }
 
-// Hàm nén thư mục backup thành file zip
+// Hàm xóa thư mục backup local (đã upload lên Telegram thành công)
+async function removeBackupDirectory(backupDir) {
+  try {
+    if (!fsSync.existsSync(backupDir)) return false;
+    await fs.rm(backupDir, { recursive: true, force: true });
+    console.log(
+      chalk.gray(
+        `🗑️  Đã xóa thư mục backup local: ${path.basename(backupDir)}`,
+      ),
+    );
+    return true;
+  } catch (error) {
+    console.log(
+      chalk.yellow(`⚠️  Không thể xóa thư mục backup: ${error.message}`),
+    );
+    return false;
+  }
+}
+
+// Hàm nén + MÃ HÓA thư mục backup thành file zip
+// Dùng AES-256-GCM: file bị hỏng/tam đổi hoặc sai mật khẩu sẽ không giải mã được,
+// nên không bao giờ có nguy cơ lấy ra dữ liệu lỗi mà không bị phát hiện.
 async function zipBackupDirectory(backupDir, dateStr) {
-  return new Promise((resolve, reject) => {
-    const zipFileName = `backup-${dateStr}.zip`;
-    const zipFilePath = path.join(__dirname, "backups", zipFileName);
-    const output = fsSync.createWriteStream(zipFilePath);
-    const archive = archiver("zip", {
-      zlib: { level: 9 }, // Mức độ nén tối đa
-    });
+  const zipFileName = `backup-${dateStr}.zip`;
+  const zipFilePath = path.join(__dirname, "backups", zipFileName);
 
-    output.on("close", () => {
-      const sizeMB = (archive.pointer() / 1024 / 1024).toFixed(2);
-      console.log(
-        chalk.green(
-          `✅ Đã nén backup thành công: ${zipFileName} (${sizeMB} MB)`,
-        ),
-      );
-      resolve(zipFilePath);
-    });
+  const encryptionKey = getEncryptionKey();
+  if (!encryptionKey) {
+    throw new Error(
+      "Chưa cấu hình BACKUP_ENCRYPTION_KEY trong .env — không thể tạo file backup mã hóa."
+    );
+  }
 
-    archive.on("error", (err) => {
-      console.log(chalk.red(`❌ Lỗi nén backup: ${err.message}`));
-      reject(err);
-    });
+  const { size } = await encryptDirectory(backupDir, zipFilePath, encryptionKey);
+  const sizeMB = (size / 1024 / 1024).toFixed(2);
 
-    archive.pipe(output);
+  console.log(
+    chalk.green(
+      `✅ Đã nén & mã hóa backup thành công: ${zipFileName} (${sizeMB} MB)`
+    )
+  );
 
-    // Thêm toàn bộ thư mục backup vào zip
-    archive.directory(backupDir, false);
-
-    archive.finalize();
-  });
+  return zipFilePath;
 }
 
 // Backup một collection với progress bar và giữ nguyên kiểu dữ liệu MongoDB
@@ -280,6 +294,10 @@ async function parseArguments() {
       .filter(Boolean);
   }
 
+  // Mặc định xóa thư mục backup local sau khi gửi Telegram thành công.
+  // Dùng --keep-local để giữ lại bản local.
+  const keepLocal = args.includes("--keep-local");
+
   // Ưu tiên đọc từ command line, nếu không có thì dùng từ .env
   let uploadPaths = [];
   let uploadPathsSource = "none";
@@ -354,7 +372,7 @@ async function parseArguments() {
     uploadPathsSource = ".env file";
   }
 
-  return { databases, uploadPaths, uploadPathsSource };
+  return { databases, uploadPaths, uploadPathsSource, keepLocal };
 }
 
 // Hàm gửi tin nhắn lên Telegram
@@ -561,6 +579,7 @@ async function main() {
     databases: userDatabases,
     uploadPaths,
     uploadPathsSource,
+    keepLocal,
   } = await parseArguments();
 
   const client = new MongoClient(MONGODB_URI, {
@@ -828,8 +847,10 @@ ${uploadPaths && uploadPaths.length > 0 ? `\n📂 <b>Thư mục uploads đã bac
 
       await sendTelegramMessage(summaryMessage);
 
-      // Nén toàn bộ thư mục backup thành file zip (file TẠM chỉ để gửi Telegram)
-      console.log(chalk.cyan("\n📦 Đang nén toàn bộ backup thành file zip..."));
+      // Nén + mã hóa toàn bộ thư mục backup thành file zip (file TẠM chỉ để gửi Telegram)
+      console.log(
+        chalk.cyan("\n📦 Đang nén & mã hóa toàn bộ backup thành file zip...")
+      );
       let zipFilePath;
       try {
         zipFilePath = await zipBackupDirectory(backupDir, dateStr);
@@ -857,7 +878,17 @@ ${uploadPaths && uploadPaths.length > 0 ? `\n📂 <b>Thư mục uploads đã bac
               `📤 Đang gửi file backup lên Telegram (${zipSizeMB}MB)...`,
             ),
           );
-          const caption = `📦 BACKUP HOÀN THÀNH\n\n📊 Thống kê:\n• Databases: ${databaseNames.length}\n• Collections: ${totalCollections}\n• Documents: ${totalBackedUp}\n• Kích thước: ${zipSizeMB} MB\n• Thời gian backup: ${duration} giây\n\n⏰ ${new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}`;
+          const caption = `📦 BACKUP HOÀN THÀNH (ĐÃ MÃ HÓA)
+
+📊 Thống kê:
+• Databases: ${databaseNames.length}
+• Collections: ${totalCollections}
+• Documents: ${totalBackedUp}
+• Kích thước: ${zipSizeMB} MB
+• Thời gian backup: ${duration} giây
+
+🔐 File được mã hóa AES-256-GCM, cần mật khẩu để giải mã.
+⏰ ${new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}`;
 
           const success = await sendTelegramFile(zipFilePath, caption);
 
@@ -865,6 +896,18 @@ ${uploadPaths && uploadPaths.length > 0 ? `\n📂 <b>Thư mục uploads đã bac
             console.log(
               chalk.green("✅ Đã gửi file backup lên Telegram thành công"),
             );
+
+            // Đã upload lên Telegram thành công -> xóa bản local
+            // (trừ khi dùng --keep-local)
+            if (!keepLocal) {
+              await removeBackupDirectory(backupDir);
+            } else {
+              console.log(
+                chalk.gray(
+                  `   Giữ lại thư mục backup local (--keep-local): ${backupDir}`,
+                ),
+              );
+            }
           } else {
             console.log(
               chalk.yellow("⚠️  Không thể gửi file zip lên Telegram"),
@@ -941,4 +984,5 @@ module.exports = {
   sendTelegramMessage,
   sendTelegramFile,
   zipBackupDirectory,
+  removeBackupDirectory,
 };

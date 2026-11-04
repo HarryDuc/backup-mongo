@@ -9,7 +9,8 @@ MongoDB backup and restore tool with Extended JSON support, preserving MongoDB d
 - Parallel processing - optimized performance
 - Progress bar for tracking
 - Flexible import options
-- Upload backup to Telegram (auto-compress)
+- **AES-256-GCM encryption** for backup archives
+- Upload backup to Telegram (auto-compress + encrypt)
 - Scheduler for automatic backups
 
 ## Installation
@@ -36,6 +37,14 @@ MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
 UPLOAD_PATHS=path/to/upload1,path/to/upload2
+
+# Encryption key (REQUIRED for backup-telegram.cjs)
+BACKUP_ENCRYPTION_KEY=your-secret-key
+```
+
+Generate a strong encryption key:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
 ## Usage
@@ -122,17 +131,88 @@ node backup-telegram.cjs
 
 Features:
 - Automatic MongoDB backup
-- Compress to ZIP file
-- Upload to Telegram
+- Compress to ZIP file **and encrypt with AES-256-GCM**
+- Upload encrypted archive to Telegram
 - Support additional upload paths (configured in `UPLOAD_PATHS`)
 
-### 4. Scheduler - Automatic Backup
+The uploaded `.zip` contains a single encrypted entry (`backup.enc`). It can be
+opened with WinRAR/7-Zip to inspect the archive, but the actual backup data
+stays encrypted until decrypted with the correct key.
+
+### 3.1 Decrypt / Restore an Encrypted Backup
+
+Decrypt to a folder:
+
+```bash
+node decrypt-backup.cjs ./backups/backup-28-04-2026_10-08-38.zip --out ./restored
+```
+
+Then import as usual:
+
+```bash
+node import-backup.cjs ./restored --all
+```
+
+Or import directly from the encrypted archive (auto-decrypts first):
+
+```bash
+node import-backup.cjs ./backups/backup-28-04-2026_10-08-38.zip --all --password <key>
+```
+
+### 4. Backup to Google Drive (auto)
+
+```bash
+node backup-drive.cjs
+```
+
+Features:
+- Dump all MongoDB databases (Extended JSON) → compress to ZIP
+- Upload to Google Drive via **Resumable Upload** (supports large files, auto retry per chunk)
+- Auto-cleanup old backups on Drive (`DRIVE_KEEP_COUNT`) and locally (`LOCAL_BACKUP_KEEP`)
+- Optional Telegram notification
+- Requires a Google **Service Account**
+
+#### Setup Google Service Account
+
+1. Vào [Google Cloud Console](https://console.cloud.google.com/) → tạo project → bật **Google Drive API**
+2. Tạo Service Account → tải file JSON key
+3. Đặt file key vào thư mục dự án (không commit lên git) và cấu hình `.env`:
+
+```env
+GOOGLE_SERVICE_ACCOUNT_FILE=./service-account.json
+DRIVE_FOLDER_NAME=MongoDB Backups
+```
+
+4. Tạo folder trên Drive và **Share** (Quyền *Editor*) cho email service account
+   (`xxx@project.iam.gserviceaccount.com` trong file JSON)
+
+Nếu dùng **domain-wide delegation**, thêm `GOOGLE_SUBJECT_USER=user@yourdomain.com`.
+
+#### Options
+
+```bash
+node backup-drive.cjs --database db1,db2   # chỉ backup một số database
+node backup-drive.cjs --no-upload         # chỉ backup local
+node backup-drive.cjs --keep-local        # giữ file local sau khi upload
+node backup-drive.cjs --folder-id <id>    # chỉ định folder Drive
+node backup-drive.cjs --dry-run           # không upload, không dọn file cũ
+```
+
+### 5. Scheduler - Automatic Backup
 
 ```bash
 node scheduler.js
 ```
 
-Default runs backup every 1 hour. Edit cron expression in file to change:
+Jobs registered in `scheduler.js`:
+
+| Job | Script | Schedule |
+| --- | --- | --- |
+| Local backup | `backup.cjs` | every 6 hours |
+| Google Drive | `backup-drive.cjs` | every 12 hours (`15 */12 * * *`) + on start |
+| Telegram | `backup-telegram.cjs` | every 12 hours (`30 */12 * * *`) |
+
+Edit the cron expressions in `scheduler.js` to change:
 
 ```javascript
 // Run every 6 hours
@@ -144,7 +224,7 @@ cron.schedule('0 2 * * *', runBackup);
 
 ## Advanced Configuration
 
-In `backup.cjs` and `backup-telegram.cjs`:
+In `backup.cjs`, `backup-telegram.cjs` and `backup-drive.cjs`:
 
 ```javascript
 const BATCH_SIZE = 1000; // Documents per batch
@@ -161,6 +241,20 @@ Tool uses MongoDB Extended JSON to preserve special data types:
 - `Date`: `{"$date": "2023-01-01T00:00:00.000Z"}`
 - `Binary`: `{"$binary": {"base64": "...", "subType": "00"}}`
 - `Decimal128`: `{"$numberDecimal": "123.45"}`
+
+## Encryption
+
+Backup archives produced by `backup-telegram.cjs` are encrypted with **AES-256-GCM**:
+
+- Key derivation: PBKDF2-SHA512, 310,000 iterations, random 32-byte salt per file
+- Random 96-bit IV per file
+- 128-bit authentication tag verified on decrypt
+
+Because GCM is an *authenticated* cipher, a corrupted or tampered archive will
+fail to decrypt instead of silently producing wrong data. Same for a wrong key.
+
+> ⚠️ If `BACKUP_ENCRYPTION_KEY` is lost, the backup **cannot be recovered**.
+> Store the key somewhere safe (password manager, secret manager).
 
 ## Important Notes
 

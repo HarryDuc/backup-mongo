@@ -1,6 +1,7 @@
 const { MongoClient, BSON } = require("mongodb");
 const { EJSON } = BSON;
 const fs = require("fs").promises;
+const fsSync = require("fs");
 const path = require("path");
 const chalk = require("chalk");
 const readline = require("readline");
@@ -171,6 +172,18 @@ function showUsage() {
     )
   );
   console.log("");
+  console.log(chalk.bold.cyan("Backup đã mã hóa (.zip):"));
+  console.log(
+    chalk.gray(
+      "  node import-backup.cjs ./backups/backup-28-04-2026_10-08-38.zip --all"
+    )
+  );
+  console.log(
+    chalk.gray(
+      "  node import-backup.cjs ./backups/backup-28-04-2026_10-08-38.zip --all --password <mật khẩu>"
+    )
+  );
+  console.log("");
 }
 
 const DATABASE_NAME = "dtrpoint"
@@ -186,6 +199,7 @@ function parseArguments() {
     targetUri: MONGODB_URI,
     importAll: false,
     showHelp: false,
+    password: null,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -235,6 +249,13 @@ function parseArguments() {
       case "--uri":
         if (i + 1 < args.length) {
           options.targetUri = encodeMongoCredentials(args[i + 1]);
+          i++;
+        }
+        break;
+      case "--password":
+      case "-p":
+        if (i + 1 < args.length) {
+          options.password = args[i + 1];
           i++;
         }
         break;
@@ -544,6 +565,53 @@ async function main() {
   console.log(chalk.bold.blue("📥 MongoDB Backup Import Tool"));
   console.log(chalk.gray(`Thư mục backup: ${options.backupDir}`));
   console.log(chalk.gray(`MongoDB URI đích: ${options.targetUri}`));
+
+  // Nếu truyền file .zip đã mã hóa -> giải mã trước rồi import từ thư mục giải mã
+  const inputPath = path.resolve(options.backupDir);
+  const isZipFile =
+    inputPath.endsWith(".zip") && fsSync.existsSync(inputPath) && fsSync.statSync(inputPath).isFile();
+
+  if (isZipFile) {
+    console.log(
+      chalk.yellow("🔓 Phát hiện file backup mã hóa (.zip) — đang giải mã...")
+    );
+
+    const { decryptZipToDirectory, getEncryptionKey } = require("./backup-encryption.cjs");
+
+    let password = options.password || getEncryptionKey();
+    if (!password) {
+      password = await askQuestion(chalk.yellow("🔑 Nhập mật khẩu giải mã: "));
+      if (!password) {
+        console.log(chalk.red("❌ Cần mật khẩu để giải mã!"));
+        process.exit(1);
+      }
+    }
+
+    // Thư mục giải mã tạm cạnh file gốc
+    const decryptedDir = path.join(
+      path.dirname(inputPath),
+      `${path.basename(inputPath, ".zip")}-decrypted`
+    );
+
+    try {
+      await decryptZipToDirectory(inputPath, decryptedDir, password);
+      console.log(chalk.green(`✅ Giải mã thành công: ${decryptedDir}`));
+      options.backupDir = decryptedDir;
+    } catch (error) {
+      console.log(chalk.red(`❌ Giải mã thất bại: ${error.message}`));
+      if (
+        error.message.includes("authenticate") ||
+        error.message.includes("Unsupported state")
+      ) {
+        console.log(
+          chalk.yellow(
+            "   → Sai mật khẩu, HOẶC file đã bị hỏng/tam đổi (tính toàn vẹn không khớp)."
+          )
+        );
+      }
+      process.exit(1);
+    }
+  }
 
   // Kiểm tra thư mục backup có tồn tại không
   try {

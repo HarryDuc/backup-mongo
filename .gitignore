@@ -2,3 +2,6 @@
 backups/
 node_modules/
 package-lock.json
+service-account.json
+*service-account*.json
+*.key.pem

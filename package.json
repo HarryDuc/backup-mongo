@@ -11,6 +11,7 @@
     "cli-progress": "^3.12.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "extract-zip": "^2.0.1",
     "form-data": "^4.0.5",
     "googleapis": "^168.0.0",
     "inquirer": "^12.9.0",
@@ -24,7 +25,8 @@
     "puppeteer": "^22.9.1",
     "sharp": "^0.33.5",
     "slugify": "^1.6.5",
-    "tough-cookie": "^5.1.2"
+    "tough-cookie": "^5.1.2",
+    "google-auth-library": "^10.6.2"
   },
   "name": "scrap-data",
   "version": "1.0.0",
